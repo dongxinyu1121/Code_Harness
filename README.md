@@ -1,9 +1,9 @@
 &nbsp;
-# Mini-Coding-Agent
+# Code_Harness
 
 This folder contains a small standalone coding agent:
 
-- code: `mini_coding_agent.py`
+- Stable CLI shim: `mini_coding_agent.py`
 - CLI: `mini-coding-agent`
 
 It is a minimal local agent loop with:
@@ -15,7 +15,55 @@ It is a minimal local agent loop with:
 - transcript and memory persistence
 - bounded delegation
 
-The model backend is currently based on Ollama.
+The model backend uses an OpenAI-compatible API provider and reads its
+credentials from CLI arguments or environment variables.
+
+The CLI also supports Anthropic-compatible Messages endpoints. Set
+`LLM_PROVIDER=anthropic`, then provide `ANTHROPIC_BASE_URL`,
+`ANTHROPIC_AUTH_TOKEN` (or `ANTHROPIC_API_KEY`), and `ANTHROPIC_MODEL` in
+your local `.env` file.
+
+For an OpenAI-compatible relay that rejects native function calling, set
+`LLM_TOOL_MODE=prompt`. The agent will use its XML tool-call format instead of
+including API-level function definitions in the request.
+
+## Module Layout
+
+The command still starts through `mini_coding_agent.py`, but that file is now
+only a compatibility shim. The CLI implementation is split by responsibility:
+
+```text
+mini_coding_agent.py       Stable shim that delegates to `cli.app:main`
+cli/config.py               Environment loading and argument parsing
+cli/factory.py              Dependency composition
+cli/banner.py               Terminal welcome screen
+cli/repl.py                 One-shot and interactive commands
+cli/app.py                  The only application `main()` function
+agent/runtime.py           MiniAgent runtime and tool lifecycle
+agent/loop.py              model -> tool -> observation -> final loop
+agent/response_parser.py   structured response parsing
+agent/termination.py       repeated-call and step-limit policies
+tools/registry.py          model-facing tool definitions
+tools/filesystem.py        file operations
+tools/search.py            code search
+tools/shell.py             bounded shell execution
+providers/                 OpenAI-compatible and fake model adapters
+workspace/                 workspace and Git snapshot
+memory/                    session persistence
+```
+
+This keeps the existing `python mini_coding_agent.py` and
+`mini-coding-agent` commands compatible while giving new features a clear
+module seam.
+
+To run the modular CLI directly from the source tree, use:
+
+```powershell
+python -m cli
+```
+
+After installing the project with `pip install -e .`, the `mini-coding-agent`
+command also points directly to `cli.app:main`.
 
 <a href="https://magazine.sebastianraschka.com/p/components-of-a-coding-agent">
   <img src="https://substack-post-media.s3.amazonaws.com/public/images/49b97718-57f4-4977-99c8-8ad5c4d32af3_1548x862.png" width="500px">
@@ -54,8 +102,8 @@ This coding harness is organized around six practical building blocks:
 You need:
 
 - Python 3.10+
-- Ollama installed
-- an Ollama model pulled locally
+- an API key for an OpenAI-compatible model service
+- the service base URL and model name
 
 Optional:
 
@@ -64,35 +112,27 @@ Optional:
 This project has no Python runtime dependency beyond the standard library, so you can run it directly with `python mini_coding_agent.py` if you do not want to use `uv`.
 
 &nbsp;
-## Install Ollama
+## Configure An API Provider
 
-Install Ollama on your machine so the `ollama` command is available in your shell.
+The provider supports OpenAI-compatible Chat Completions and Responses endpoints.
+For the Responses wire format:
 
-Official installation link: [ollama.com/download](https://ollama.com/download)
-
-Then verify:
-
-```bash
-ollama --help
+```text
+POST {OPENAI_BASE_URL}/responses
+Authorization: Bearer {OPENAI_API_KEY}
 ```
 
-Start the server:
+Set the configuration in PowerShell:
 
-```bash
-ollama serve
+```powershell
+$env:OPENAI_BASE_URL="https://api.chiyi.cc"
+$env:OPENAI_API_KEY="your-api-key"
+$env:LLM_MODEL="gpt-5.5"
+$env:LLM_WIRE_API="responses"
 ```
 
-In another terminal, pull a model. Example:
-
-```bash
-ollama pull qwen3.5:4b
-```
-
-Qwen 3.5 model library:
-
-- [ollama.com/library/qwen3.5](https://ollama.com/library/qwen3.5)
-
-The default in this project is `qwen3.5:4b`. If you have sufficient memory, it is worth trying a larger model such as `qwen3.5:9b` or another larger Qwen 3.5 variant. The agent just sends prompts to Ollama's `/api/generate` endpoint.
+The API key is read at runtime and must not be committed to Git. You can also
+put these values in a local `.env` file; `.env` is ignored by Git.
 
 &nbsp;
 ## Project Setup
@@ -130,9 +170,11 @@ cd mini-coding-agent
 python mini_coding_agent.py
 ```
 
-By default it uses:
+By default it reads:
 
-- model: `qwen3.5:4b`
+- model: `LLM_MODEL`
+- base URL: `LLM_BASE_URL` or `OPENAI_BASE_URL`
+- API key: `LLM_API_KEY` or `OPENAI_API_KEY`
 - approval: `ask`
 
 For a concrete usage example, see [EXAMPLE.md](EXAMPLE.md).
@@ -220,19 +262,21 @@ Important flags:
 - `--cwd`
   sets the workspace directory the agent should inspect and modify; default: `.`
 - `--model`
-  selects the Ollama model name, such as `qwen3.5:4b`; default: `qwen3.5:4b`
-- `--host`
-  points the agent at the Ollama server URL (usually not needed); default: `http://127.0.0.1:11434`
-- `--ollama-timeout`
-  controls how long the client waits for an Ollama response (usually not needed); default: `300` seconds
+  selects the model; defaults to `LLM_MODEL`
+- `--base-url`
+  selects the OpenAI-compatible API base URL; defaults to `LLM_BASE_URL` or `OPENAI_BASE_URL`
+- `--api-key`
+  supplies the API key; defaults to `LLM_API_KEY` or `OPENAI_API_KEY`
+- `--timeout`
+  controls how long the client waits for an API response; default: `900` seconds
 - `--resume`
   resumes a saved session by id or uses `latest`; default: start a new session
 - `--approval`
   controls how risky tools are handled: `ask`, `auto`, or `never`; default: `ask`
 - `--max-steps`
-  limits how many model and tool turns are allowed for one user request; default: `6`
+  limits how many model and tool turns are allowed for one user request; default: `18`
 - `--max-new-tokens`
-  caps the model output length for each step; default: `512`
+  caps the model output length for each step; default: `1536`
 - `--temperature`
   controls sampling randomness; default: `0.2`
 - `--top-p`
@@ -247,6 +291,6 @@ See [EXAMPLE.md](EXAMPLE.md)
 ## Notes & Tips
 
 - The agent expects the model to emit either `<tool>...</tool>` or `<final>...</final>`.
-- Different Ollama models will follow those instructions with different reliability.
+- Different API models will follow those instructions with different reliability.
 - If the model does not follow the format well, use a stronger instruction-following model.
 - The agent is intentionally small and optimized for readability, not robustness.

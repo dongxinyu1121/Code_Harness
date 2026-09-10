@@ -33,3 +33,6 @@ tmp/
 
 # OS files
 .DS_Store
+
+# Local credentials
+.env

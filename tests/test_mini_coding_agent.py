@@ -1,15 +1,19 @@
 import json
+from argparse import Namespace
+from pathlib import Path
 import pytest
 from unittest.mock import patch
 
 from mini_coding_agent import (
     FakeModelClient,
     MiniAgent,
-    OllamaModelClient,
     SessionStore,
     WorkspaceContext,
     build_welcome,
 )
+from providers.openai_compatible import OpenAICompatibleProvider
+from providers.anthropic_compatible import AnthropicCompatibleProvider
+import cli.factory as cli_factory
 
 
 def build_workspace(tmp_path):
@@ -189,11 +193,79 @@ def test_list_files_hides_internal_agent_state(tmp_path):
     assert "[F] hello.txt" in result
 
 
+def test_list_directory_tree_is_bounded_and_hides_internal_state(tmp_path):
+    (tmp_path / "src" / "nested").mkdir(parents=True)
+    (tmp_path / "src" / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    (tmp_path / "src" / "nested" / "deep.txt").write_text("deep\n", encoding="utf-8")
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".mini-coding-agent").mkdir()
+    agent = build_agent(tmp_path, [])
+
+    result = agent.run_tool(
+        "list_directory_tree",
+        {"path": ".", "max_depth": 2, "max_entries": 10},
+    )
+
+    assert "[D] src" in result
+    assert "[F] src\\main.py" in result
+    assert "[F] src\\nested\\deep.txt" in result
+    assert ".git" not in result
+    assert ".mini-coding-agent" not in result
+
+
+def test_rename_file_moves_a_file_inside_workspace(tmp_path):
+    (tmp_path / "old.txt").write_text("hello\n", encoding="utf-8")
+    agent = build_agent(tmp_path, [])
+
+    result = agent.run_tool(
+        "rename_file",
+        {"path": "old.txt", "new_path": "new.txt"},
+    )
+
+    assert result == "renamed old.txt -> new.txt"
+    assert not (tmp_path / "old.txt").exists()
+    assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "hello\n"
+
+
+def test_delete_file_requires_approval_and_removes_a_file(tmp_path):
+    path = tmp_path / "temporary.txt"
+    path.write_text("remove me\n", encoding="utf-8")
+    agent = build_agent(tmp_path, [], approval_policy="auto")
+
+    result = agent.run_tool("delete_file", {"path": "temporary.txt"})
+
+    assert result == "deleted temporary.txt"
+    assert not path.exists()
+
+
+def test_welcome_logo_uses_fixed_width_lines(tmp_path):
+    agent = build_agent(tmp_path, [])
+    welcome = build_welcome(agent, model="gpt-5.5", host="https://api.example.com")
+    logo_lines = welcome.splitlines()[1:6]
+
+    assert len({len(line) for line in logo_lines}) == 1
+
+
 def test_path_rejects_parent_escape(tmp_path):
     agent = build_agent(tmp_path, [])
 
     with pytest.raises(ValueError, match="path escapes workspace"):
         agent.path("../outside.txt")
+
+
+def test_explicit_cwd_is_the_agent_workspace_even_inside_a_git_repo(tmp_path):
+    workspace_dir = tmp_path / "nested-workspace"
+    workspace_dir.mkdir()
+    workspace = WorkspaceContext.build(workspace_dir)
+    agent = MiniAgent(
+        model_client=FakeModelClient([]),
+        workspace=workspace,
+        session_store=SessionStore(workspace_dir / ".mini-coding-agent" / "sessions"),
+        approval_policy="auto",
+    )
+
+    assert Path(agent.root) == workspace_dir.resolve()
+    assert agent.session["workspace_root"] == str(workspace_dir.resolve())
 
 
 def test_path_rejects_symlink_escape(tmp_path):
@@ -234,6 +306,68 @@ def test_repeated_identical_tool_call_is_rejected(tmp_path):
     assert result == "error: repeated identical tool call for list_files; choose a different tool or return a final answer"
 
 
+def test_repeated_read_of_same_file_is_rejected_until_file_changes(tmp_path):
+    file_path = tmp_path / "hello.txt"
+    file_path.write_text("hello\n", encoding="utf-8")
+    agent = build_agent(tmp_path, [])
+
+    first = agent.run_tool("read_file", {"path": "hello.txt", "start": 1, "end": 1})
+    agent.record(
+        {
+            "role": "tool",
+            "name": "read_file",
+            "args": {"path": "hello.txt", "start": 1, "end": 1},
+            "content": first,
+            "created_at": "1",
+        }
+    )
+    second = agent.run_tool("read_file", {"path": "hello.txt", "start": 2, "end": 3})
+
+    assert "hello.txt" in first
+    assert second == (
+        "error: file already read without a later write: hello.txt; "
+        "use the existing result or choose a different tool"
+    )
+
+    agent.run_tool(
+        "patch_file",
+        {"path": "hello.txt", "old_text": "hello", "new_text": "updated"},
+    )
+    agent.record(
+        {
+            "role": "tool",
+            "name": "patch_file",
+            "args": {"path": "hello.txt"},
+            "content": "patched hello.txt",
+            "created_at": "2",
+        }
+    )
+    refreshed = agent.run_tool("read_file", {"path": "hello.txt", "start": 1, "end": 1})
+    assert "updated" in refreshed
+
+
+def test_identical_inspection_result_is_rejected_as_no_progress(tmp_path):
+    (tmp_path / "hello.txt").write_text("hello\n", encoding="utf-8")
+    agent = build_agent(tmp_path, [])
+
+    first = agent.run_tool("list_files", {"path": "."})
+    agent.record(
+        {
+            "role": "tool",
+            "name": "list_files",
+            "args": {"path": "."},
+            "content": first,
+            "created_at": "1",
+        }
+    )
+
+    second = agent.run_tool("list_files", {"path": "."})
+    assert second == (
+        "error: list_files returned the same observation as before; "
+        "use the existing result and choose a different tool or return a final answer"
+    )
+
+
 def test_welcome_screen_keeps_box_shape_for_long_paths(tmp_path):
     deep = tmp_path / "very" / "long" / "path" / "for" / "the" / "mini" / "agent" / "welcome" / "screen"
     deep.mkdir(parents=True)
@@ -245,9 +379,9 @@ def test_welcome_screen_keeps_box_shape_for_long_paths(tmp_path):
     assert len(lines) >= 5
     assert len({len(line) for line in lines}) == 1
     assert "..." in welcome
-    assert "O   O" in welcome
+    assert "DXY CODING AGENT" in welcome
     assert "MINI-CODING-AGENT" not in welcome
-    assert "MINI CODING AGENT" in welcome
+    assert "MINI CODING AGENT" not in welcome
     assert "// READY" not in welcome
     assert "SLASH" not in welcome
     assert "READY      " not in welcome
@@ -358,7 +492,7 @@ def test_history_text_deduplicates_unchanged_repeated_reads(tmp_path):
     assert history.count("stable") == 1
 
 
-def test_ollama_client_posts_expected_payload():
+def test_openai_compatible_provider_posts_expected_payload():
     captured = {}
 
     class FakeResponse:
@@ -369,17 +503,21 @@ def test_ollama_client_posts_expected_payload():
             return False
 
         def read(self):
-            return json.dumps({"response": "<final>ok</final>"}).encode("utf-8")
+            return json.dumps(
+                {"choices": [{"message": {"content": "<final>ok</final>"}}]}
+            ).encode("utf-8")
 
     def fake_urlopen(request, timeout):
         captured["url"] = request.full_url
         captured["timeout"] = timeout
         captured["body"] = json.loads(request.data.decode("utf-8"))
+        captured["authorization"] = request.get_header("Authorization")
         return FakeResponse()
 
-    client = OllamaModelClient(
-        model="qwen3.5:4b",
-        host="http://127.0.0.1:11434",
+    client = OpenAICompatibleProvider(
+        model="deepseek-chat",
+        base_url="https://api.example.com/v1",
+        api_key="test-key",
         temperature=0.2,
         top_p=0.9,
         timeout=30,
@@ -389,11 +527,290 @@ def test_ollama_client_posts_expected_payload():
         result = client.complete("hello", 42)
 
     assert result == "<final>ok</final>"
-    assert captured["url"] == "http://127.0.0.1:11434/api/generate"
+    assert captured["url"] == "https://api.example.com/v1/chat/completions"
     assert captured["timeout"] == 30
-    assert captured["body"]["model"] == "qwen3.5:4b"
-    assert captured["body"]["prompt"] == "hello"
+    assert captured["authorization"] == "Bearer test-key"
+    assert captured["body"]["model"] == "deepseek-chat"
+    assert captured["body"]["messages"] == [{"role": "user", "content": "hello"}]
     assert captured["body"]["stream"] is False
-    assert captured["body"]["raw"] is False
-    assert captured["body"]["think"] is False
-    assert captured["body"]["options"]["num_predict"] == 42
+    assert captured["body"]["max_tokens"] == 42
+    assert captured["body"]["temperature"] == 0.2
+    assert captured["body"]["top_p"] == 0.9
+
+
+def test_openai_compatible_provider_posts_responses_payload():
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "<final>ok</final>"}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        captured["body"] = json.loads(request.data.decode("utf-8"))
+        return FakeResponse()
+
+    client = OpenAICompatibleProvider(
+        model="gpt-5.5",
+        base_url="https://api.chiyi.cc",
+        api_key="test-key",
+        wire_api="responses",
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        result = client.complete("hello", 42)
+
+    assert result == "<final>ok</final>"
+    assert captured["url"] == "https://api.chiyi.cc/v1/responses"
+    assert captured["body"]["model"] == "gpt-5.5"
+    assert captured["body"]["input"] == "hello"
+    assert captured["body"]["max_output_tokens"] == 42
+    assert "temperature" not in captured["body"]
+    assert "top_p" not in captured["body"]
+
+
+def test_openai_compatible_provider_translates_responses_function_call():
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "output": [
+                        {
+                            "type": "function_call",
+                            "name": "read_file",
+                            "call_id": "call_123",
+                            "arguments": '{"path":"calculator.py","start":1,"end":10}',
+                        }
+                    ]
+                }
+            ).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode("utf-8"))
+        assert body["tools"][0]["type"] == "function"
+        return FakeResponse()
+
+    client = OpenAICompatibleProvider(
+        model="gpt-5.5",
+        base_url="https://api.example.com",
+        api_key="test-key",
+        wire_api="responses",
+        tools=[{"type": "function", "name": "read_file"}],
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        result = client.complete("inspect the file", 42)
+
+    assert result == (
+        '<tool>{"name": "read_file", "args": '
+        '{"path": "calculator.py", "start": 1, "end": 10}}</tool>'
+    )
+
+
+def test_openai_compatible_provider_continues_responses_after_tool_result():
+    captured = []
+
+    class FakeResponse:
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(self.body).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured.append(json.loads(request.data.decode("utf-8")))
+        if len(captured) == 1:
+            return FakeResponse(
+                {
+                    "id": "resp_123",
+                    "output": [
+                        {
+                            "type": "function_call",
+                            "name": "read_file",
+                            "call_id": "call_123",
+                            "arguments": '{"path":"calculator.py","start":1,"end":10}',
+                        }
+                    ],
+                }
+            )
+        return FakeResponse({"output_text": "done"})
+
+    client = OpenAICompatibleProvider(
+        model="gpt-5.5",
+        base_url="https://api.example.com",
+        api_key="test-key",
+        wire_api="responses",
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        assert client.complete("inspect the file", 42).startswith("<tool>")
+        client.submit_tool_result("file contents")
+        assert client.complete("inspect the file", 42) == "done"
+
+    assert captured[1]["previous_response_id"] == "resp_123"
+    assert captured[1]["input"] == [
+        {
+            "type": "function_call_output",
+            "call_id": "call_123",
+            "output": "file contents",
+        }
+    ]
+
+
+def test_openai_compatible_provider_sends_responses_instructions():
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "ok"}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        body = json.loads(request.data.decode("utf-8"))
+        assert body["instructions"] == "Use tools."
+        return FakeResponse()
+
+    client = OpenAICompatibleProvider(
+        model="gpt-5.5",
+        base_url="https://api.example.com",
+        api_key="test-key",
+        wire_api="responses",
+        instructions="Use tools.",
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        assert client.complete("inspect the file", 42) == "ok"
+
+
+def test_openai_compatible_provider_requires_api_configuration():
+    with pytest.raises(ValueError, match="LLM_API_KEY or OPENAI_API_KEY is required"):
+        OpenAICompatibleProvider(
+            model="demo-model",
+            base_url="https://api.example.com/v1",
+            api_key="",
+        )
+
+
+def test_anthropic_provider_sends_tool_result_in_follow_up_request():
+    captured = []
+
+    class FakeResponse:
+        def __init__(self, body):
+            self.body = body
+            self.status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps(self.body).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured.append(json.loads(request.data.decode("utf-8")))
+        if len(captured) == 1:
+            return FakeResponse(
+                {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_123",
+                            "name": "read_file",
+                            "input": {"path": "calculator.py", "start": 1, "end": 10},
+                        }
+                    ]
+                }
+            )
+        return FakeResponse({"content": [{"type": "text", "text": "Done."}]})
+
+    client = AnthropicCompatibleProvider(
+        model="claude-test",
+        base_url="https://api.example.com",
+        api_key="test-key",
+        tools=[
+            {
+                "type": "function",
+                "name": "read_file",
+                "description": "Read a file.",
+                "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
+            }
+        ],
+        instructions="Use tools.",
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        tool_call = client.complete("inspect calculator.py", 42)
+        client.submit_tool_result("1: def add(a, b): return a + b")
+        final = client.complete("ignored after tool call", 42)
+
+    assert json.loads(tool_call[6:-7]) == {
+        "name": "read_file",
+        "args": {"path": "calculator.py", "start": 1, "end": 10},
+    }
+    assert final == "Done."
+    assert captured[0]["tools"][0]["input_schema"]["type"] == "object"
+    assert captured[0]["system"] == "Use tools."
+    assert captured[1]["messages"][-1] == {
+        "role": "user",
+        "content": [
+            {
+                "type": "tool_result",
+                "tool_use_id": "toolu_123",
+                "content": "1: def add(a, b): return a + b",
+            }
+        ],
+    }
+
+
+def test_prompt_tool_mode_omits_native_function_definitions(tmp_path, monkeypatch):
+    captured = {}
+
+    class StubProvider:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(cli_factory, "OpenAICompatibleProvider", StubProvider)
+    args = Namespace(
+        cwd=tmp_path,
+        provider="openai",
+        tool_mode="prompt",
+        model="relay-model",
+        base_url="https://api.example.com",
+        api_key="test-key",
+        wire_api="responses",
+        temperature=0.2,
+        top_p=0.9,
+        timeout=30,
+        resume=None,
+        approval="auto",
+        max_steps=3,
+        max_new_tokens=128,
+    )
+
+    cli_factory.build_agent(args)
+
+    assert captured["tools"] == []
+    assert "XML tool format" in captured["instructions"]
