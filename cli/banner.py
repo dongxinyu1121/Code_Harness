@@ -4,7 +4,7 @@ import shutil
 
 
 WELCOME_ART = (
-    " ____   __  __ __    __",
+    "____   __  __ __    __",
     "|  _ \\  \\ \\/ / \\ \\  / /",
     "| | | |  \\  /   \\ \\/ /",
     "| |_| |  /  \\    \\  /",
@@ -15,6 +15,8 @@ HELP_DETAILS = "\n".join(
         "Commands:",
         "/help    Show this help message.",
         "/memory  Show the agent's distilled working memory.",
+        "/skills  List available skills.",
+        "/skill   Activate a skill by name; use '/skill none' to clear it.",
         "/session Show the path to the saved session file.",
         "/reset   Clear the current session history and memory.",
         "/exit    Exit the agent.",

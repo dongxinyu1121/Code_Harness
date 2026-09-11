@@ -9,6 +9,7 @@ from agent import loop as agent_loop
 from agent import termination
 from agent.response_parser import ResponseParser
 from memory.session_store import SessionStore
+from skills.router import SkillRouter
 from tools import delegate as delegate_tool
 from tools import filesystem as filesystem_tools
 from tools import search as search_tool
@@ -46,6 +47,8 @@ class MiniAgent:
         depth=0,
         max_depth=1,
         read_only=False,
+        skill_registry=None,
+        skill_router=None,
     ):
         self.model_client = model_client
         self.workspace = workspace
@@ -58,13 +61,17 @@ class MiniAgent:
         self.depth = depth
         self.max_depth = max_depth
         self.read_only = read_only
+        self.skill_registry = skill_registry
+        self.skill_router = skill_router or SkillRouter()
         self.session = session or {
             "id": datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6],
             "created_at": now(),
             "workspace_root": workspace.cwd,
             "history": [],
             "memory": {"task": "", "files": [], "notes": []},
+            "active_skill": None,
         }
+        self.session.setdefault("active_skill", None)
         self.tools = self.build_tools()
         self.prefix = self.build_prefix()
         self.session_path = self.session_store.save(self.session)
@@ -252,14 +259,17 @@ class MiniAgent:
         return clip("\n".join(lines), MAX_HISTORY)
 
     def prompt(self, user_message):
-        return "\n\n".join(
+        sections = [self.prefix, self.memory_text()]
+        skill_text = self.skill_text()
+        if skill_text:
+            sections.append(skill_text)
+        sections.extend(
             [
-                self.prefix,
-                self.memory_text(),
                 "Transcript:\n" + self.history_text(),
                 "Current user request:\n" + user_message,
             ]
         )
+        return "\n\n".join(sections)
 
     def record(self, item):
         self.session["history"].append(item)
@@ -274,6 +284,7 @@ class MiniAgent:
         self.remember(memory["notes"], note, 5)
 
     def ask(self, user_message):
+        self.select_skill_for(user_message)
         return agent_loop.run(
             user_message=user_message,
             model_client=self.model_client,
@@ -288,6 +299,63 @@ class MiniAgent:
             max_new_tokens=self.max_new_tokens,
             clip=clip,
             now=now,
+        )
+
+    def list_skills_text(self):
+        if self.skill_registry is None:
+            return "no skills available"
+        skills = self.skill_registry.list_skills()
+        if not skills:
+            return "no skills available"
+        return "\n".join(f"- {skill.name}: {skill.description}" for skill in skills)
+
+    def activate_skill(self, name, source="manual"):
+        if self.skill_registry is None:
+            raise KeyError(str(name).strip())
+        skill = self.skill_registry.load_skill(name)
+        self.session["active_skill"] = {"name": skill.name, "source": source}
+        self.session_path = self.session_store.save(self.session)
+        return skill
+
+    def clear_skill(self):
+        self.session["active_skill"] = None
+        self.session_path = self.session_store.save(self.session)
+
+    def current_skill(self):
+        active = self.session.get("active_skill")
+        if not active or self.skill_registry is None:
+            return None
+        try:
+            return self.skill_registry.load_skill(active["name"])
+        except KeyError:
+            self.session["active_skill"] = None
+            return None
+
+    def select_skill_for(self, user_message):
+        active = self.session.get("active_skill")
+        if active and active.get("source") == "manual":
+            return self.current_skill()
+        if self.skill_registry is None:
+            return None
+        selection = self.skill_router.choose(user_message, self.skill_registry.list_skills())
+        if selection is None:
+            if active and active.get("source") == "auto":
+                self.clear_skill()
+            return None
+        return self.activate_skill(selection.name, source="auto")
+
+    def skill_text(self):
+        skill = self.current_skill()
+        if skill is None:
+            return ""
+        return "\n".join(
+            [
+                "Active skill:",
+                f"- name: {skill.name}",
+                f"- description: {skill.description}",
+                "Instructions:",
+                clip(skill.content, 6000),
+            ]
         )
 
     def run_tool(self, name, args):
@@ -521,6 +589,8 @@ class MiniAgent:
                 depth=self.depth + 1,
                 max_depth=self.max_depth,
                 read_only=True,
+                skill_registry=self.skill_registry,
+                skill_router=self.skill_router,
             )
 
         return delegate_tool.delegate(args, create_child_agent, self.history_text, clip)

@@ -10,8 +10,10 @@ from memory.session_store import SessionStore
 from providers.fake import FakeModelClient
 from providers.openai_compatible import OpenAICompatibleProvider
 from providers.anthropic_compatible import AnthropicCompatibleProvider
+from skills import SkillRegistry, SkillRouter
 from workspace.snapshot import WorkspaceContext
 import cli.factory as cli_factory
+import cli.repl as cli_repl
 from cli.config import build_arg_parser
 
 
@@ -33,10 +35,121 @@ def build_agent(tmp_path, outputs, **kwargs):
     )
 
 
+def write_skill(root, name, description="Demo skill."):
+    skill_dir = root / name
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        "\n".join(
+            [
+                "---",
+                f"name: {name}",
+                f"description: {description}",
+                "---",
+                "",
+                f"# {name}",
+                "",
+                "Use this skill for matching tasks.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_cli_defaults_to_auto_approval():
     args = build_arg_parser().parse_args([])
 
     assert args.approval == "auto"
+
+
+def test_skill_registry_loads_frontmatter(tmp_path):
+    skills_root = tmp_path / "skills"
+    write_skill(skills_root, "ask-matt", "Route skill questions.")
+
+    registry = SkillRegistry(skills_root)
+    skill = registry.load_skill("ask-matt")
+
+    assert skill.name == "ask-matt"
+    assert skill.description == "Route skill questions."
+    assert "Use this skill" in skill.content
+
+
+def test_skill_router_selects_high_confidence_skill(tmp_path):
+    skills_root = tmp_path / "skills"
+    write_skill(skills_root, "ask-matt", "Ask which skill or workflow fits.")
+    registry = SkillRegistry(skills_root)
+    router = SkillRouter()
+
+    assert router.choose("这个任务应该用哪个 skill？", registry.list_skills()).name == "ask-matt"
+    assert router.choose("随便看一下 README", registry.list_skills()) is None
+
+
+def test_manual_skill_is_added_to_prompt(tmp_path):
+    skills_root = tmp_path / "skills"
+    write_skill(skills_root, "ask-matt", "Ask which skill or workflow fits.")
+    agent = build_agent(
+        tmp_path,
+        [],
+        skill_registry=SkillRegistry(skills_root),
+        skill_router=SkillRouter(),
+    )
+
+    agent.activate_skill("ask-matt")
+    prompt = agent.prompt("hello")
+
+    assert "Active skill:" in prompt
+    assert "- name: ask-matt" in prompt
+
+
+def test_agent_auto_loads_high_confidence_skill(tmp_path):
+    skills_root = tmp_path / "skills"
+    write_skill(skills_root, "ask-matt", "Ask which skill or workflow fits.")
+    agent = build_agent(
+        tmp_path,
+        ["<final>ok</final>"],
+        skill_registry=SkillRegistry(skills_root),
+        skill_router=SkillRouter(),
+    )
+
+    assert agent.ask("我现在应该用哪个 skill？") == "ok"
+
+    assert "Active skill:" in agent.model_client.prompts[0]
+    assert agent.session["active_skill"]["name"] == "ask-matt"
+
+
+def test_agent_skips_skill_when_confidence_is_low(tmp_path):
+    skills_root = tmp_path / "skills"
+    write_skill(skills_root, "ask-matt", "Ask which skill or workflow fits.")
+    agent = build_agent(
+        tmp_path,
+        ["<final>ok</final>"],
+        skill_registry=SkillRegistry(skills_root),
+        skill_router=SkillRouter(),
+    )
+
+    assert agent.ask("阅读 README") == "ok"
+
+    assert "Active skill:" not in agent.model_client.prompts[0]
+    assert agent.session["active_skill"] is None
+
+
+def test_repl_accepts_skill_name_as_direct_slash_command(tmp_path, monkeypatch, capsys):
+    skills_root = tmp_path / "skills"
+    write_skill(skills_root, "ask-matt", "Ask which skill or workflow fits.")
+    agent = build_agent(
+        tmp_path,
+        [],
+        skill_registry=SkillRegistry(skills_root),
+        skill_router=SkillRouter(),
+    )
+    args = Namespace(prompt=[])
+    inputs = iter(["/ask-matt", "/exit"])
+    monkeypatch.setattr("builtins.input", lambda _: next(inputs))
+
+    assert cli_repl.run(agent, args) == 0
+
+    assert agent.session["active_skill"] == {"name": "ask-matt", "source": "manual"}
+    assert agent.model_client.prompts == []
+    assert "active skill: ask-matt" in capsys.readouterr().out
 
 
 def test_agent_runs_tool_then_final(tmp_path):

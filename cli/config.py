@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 
-HELP_TEXT = "/help, /memory, /session, /reset, /exit"
+HELP_TEXT = "/help, /memory, /skills, /skill, /session, /reset, /exit"
 
 
 def load_local_env(path=".env"):

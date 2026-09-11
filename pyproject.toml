@@ -21,4 +21,4 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["agent", "cli", "memory", "providers", "tools", "workspace"]
+packages = ["agent", "cli", "memory", "providers", "skills", "tools", "workspace"]

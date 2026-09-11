@@ -7,6 +7,7 @@ from agent.runtime import MiniAgent
 from memory.session_store import SessionStore
 from providers.anthropic_compatible import AnthropicCompatibleProvider
 from providers.openai_compatible import OpenAICompatibleProvider
+from skills import SkillRegistry, SkillRouter
 from tools.registry import response_tool_definitions
 from workspace.snapshot import WorkspaceContext
 
@@ -15,6 +16,8 @@ def build_agent(args):
     """组装工作区、模型提供方、会话和 Agent 运行时。"""
     workspace = WorkspaceContext.build(args.cwd)
     store = SessionStore(Path(workspace.cwd) / ".mini-coding-agent" / "sessions")
+    skill_registry = SkillRegistry(Path(__file__).resolve().parents[1] / "skills")
+    skill_router = SkillRouter()
     provider = (args.provider or os.getenv("LLM_PROVIDER", "openai")).lower()
     tool_mode = (args.tool_mode or os.getenv("LLM_TOOL_MODE", "native")).lower()
     if tool_mode not in {"native", "prompt"}:
@@ -63,6 +66,8 @@ def build_agent(args):
             approval_policy=args.approval,
             max_steps=args.max_steps,
             max_new_tokens=args.max_new_tokens,
+            skill_registry=skill_registry,
+            skill_router=skill_router,
         )
     return MiniAgent(
         model_client=model,
@@ -71,4 +76,6 @@ def build_agent(args):
         approval_policy=args.approval,
         max_steps=args.max_steps,
         max_new_tokens=args.max_new_tokens,
+        skill_registry=skill_registry,
+        skill_router=skill_router,
     )
