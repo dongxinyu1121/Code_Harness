@@ -1,10 +1,10 @@
-"""Workspace path validation shared by filesystem tools."""
+"""文件系统工具共享的工作区路径校验。"""
 
 from pathlib import Path
 
 
 class WorkspacePathPolicy:
-    """Resolve paths while preventing access outside a workspace root."""
+    """解析路径，并阻止访问工作区根目录之外的位置。"""
 
     def __init__(self, root):
         self.root = Path(root).resolve()

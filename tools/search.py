@@ -1,4 +1,4 @@
-"""Workspace code search tool."""
+"""工作区代码搜索工具。"""
 
 import shutil
 import subprocess

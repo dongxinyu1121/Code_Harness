@@ -60,10 +60,10 @@ not a claim that the target modules already exist.
 | `delegate` | Safe/read-only child | Run a bounded child agent | Keep with explicit depth limits |
 | `run_tests` | New | Not present | Add structured pytest execution and result parsing |
 
-The first runtime migration is complete. The original public imports remain
-available from `mini_coding_agent` for compatibility, while the Agent runtime
-and Responses tool definitions now live in `agent/runtime.py` and
-`tools/registry.py`.
+The first runtime migration is complete. The structured packages are now the
+source of truth; the former top-level `mini_coding_agent` compatibility module
+has been removed. The Agent runtime and Responses tool definitions live in
+`agent/runtime.py` and `tools/registry.py`.
 
 ## Agent Loop Mapping
 

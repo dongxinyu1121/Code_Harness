@@ -1,4 +1,4 @@
-"""Core Agent runtime and its small compatibility interface."""
+"""Agent 核心运行时及其小型兼容接口。"""
 
 import json
 import uuid
@@ -32,7 +32,7 @@ def clip(text, limit=MAX_TOOL_OUTPUT):
 
 
 class MiniAgent:
-    """Coordinate prompt construction, tools, memory, and the Agent loop."""
+    """协调提示词构建、工具、记忆和 Agent 循环。"""
 
     def __init__(
         self,

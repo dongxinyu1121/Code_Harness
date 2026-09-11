@@ -1,4 +1,4 @@
-"""Repository and workspace context collection."""
+"""仓库和工作区上下文收集。"""
 
 import subprocess
 from pathlib import Path
@@ -16,7 +16,7 @@ def clip(text, limit):
 
 
 class WorkspaceContext:
-    """A snapshot of the repository state used to build agent context."""
+    """用于构建 Agent 上下文的仓库状态快照。"""
 
     def __init__(self, cwd, repo_root, branch, default_branch, status, recent_commits, project_docs):
         self.cwd = cwd

@@ -1,4 +1,4 @@
-"""Providers for OpenAI-compatible Responses and Chat Completions APIs."""
+"""OpenAI 兼容 Responses 和 Chat Completions API 的模型提供方。"""
 
 import json
 import http.client
@@ -11,7 +11,7 @@ from .base import BaseLLMProvider
 
 
 class OpenAICompatibleProvider(BaseLLMProvider):
-    """Call a provider exposing an OpenAI-compatible model endpoint."""
+    """调用暴露 OpenAI 兼容模型端点的提供方。"""
 
     def __init__(
         self,
@@ -49,18 +49,18 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
         self.instructions = instructions
 
-        # Responses API state
+        # Responses API 状态。
         self.previous_response_id = None
         self.pending_call_id = None
         self.pending_tool_output = None
 
-        # Chat Completions state
+        # Chat Completions 状态。
         self.messages = []
         self.pending_tool_call_id = None
         self.pending_tool_result = None
 
     def _endpoint_url(self, path):
-        """Build an API endpoint URL whether base_url is root or already /v1."""
+        """无论 base_url 是根地址还是已包含 /v1，都构造正确的 API 端点。"""
         base = self.base_url
         path = "/" + path.lstrip("/")
         if base.endswith("/v1") and path.startswith("/v1/"):
@@ -69,7 +69,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
 
     @staticmethod
     def _to_chat_tools(tools):
-        """Convert Responses API flat tool format to Chat Completions nested format."""
+        """将 Responses API 的扁平工具格式转换为 Chat Completions 的嵌套格式。"""
         converted = []
         for tool in tools:
             if tool.get("type") != "function":
@@ -90,7 +90,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         return self._complete_chat(prompt, max_new_tokens)
 
     # ------------------------------------------------------------------
-    # Responses API path (unchanged behaviour)
+    # Responses API 路径（保持既有行为）。
     # ------------------------------------------------------------------
 
     def _complete_responses(self, prompt, max_new_tokens):
@@ -158,7 +158,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         return str(content)
 
     # ------------------------------------------------------------------
-    # Chat Completions path (with multi-turn tool support)
+    # Chat Completions 路径（支持多轮工具调用）。
     # ------------------------------------------------------------------
 
     def _complete_chat(self, prompt, max_new_tokens):
@@ -193,7 +193,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError("LLM response did not contain choices[0].message") from exc
 
-        # Append the raw assistant message to history so future turns include it.
+        # 将原始 assistant 消息加入历史，供后续轮次继续使用。
         self.messages.append(message)
 
         tool_calls = message.get("tool_calls")
@@ -208,7 +208,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 {"name": tc["function"].get("name", ""), "args": arguments}
             ) + "</tool>"
 
-        # No tool call — clear any stale pending state.
+        # 没有工具调用时，清理所有过期的待处理状态。
         self.pending_tool_call_id = None
         self.pending_tool_result = None
 
@@ -220,7 +220,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         return str(content or "")
 
     def _advance_chat(self, prompt):
-        """Append a tool result or start a new turn."""
+        """追加工具结果，或开始新的对话轮次。"""
         if self.pending_tool_call_id and self.pending_tool_result is not None:
             self.messages.append(
                 {
@@ -235,7 +235,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             self.messages = [{"role": "user", "content": str(prompt)}]
 
     # ------------------------------------------------------------------
-    # Shared HTTP helper
+    # 共享 HTTP 辅助逻辑。
     # ------------------------------------------------------------------
 
     def _send(self, url, payload):
@@ -273,11 +273,11 @@ class OpenAICompatibleProvider(BaseLLMProvider):
                 time.sleep(min(2**attempt, 8))
 
     # ------------------------------------------------------------------
-    # Tool result submission (called by the agent loop after each tool run)
+    # 工具结果提交（每次工具运行后由 Agent 循环调用）。
     # ------------------------------------------------------------------
 
     def submit_tool_result(self, result):
-        """Queue a local tool result for the next request."""
+        """将本地工具结果排队，供下一次请求使用。"""
         if self.wire_api == "responses":
             self.pending_tool_output = str(result)
         else:

@@ -1,4 +1,4 @@
-"""Bounded child-agent delegation."""
+"""受限子 Agent 委派。"""
 
 
 def delegate(args, create_child_agent, history_text, clip):

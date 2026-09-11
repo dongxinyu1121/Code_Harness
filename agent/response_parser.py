@@ -1,11 +1,11 @@
-"""Parse the model's tool and final-answer protocol."""
+"""解析模型的工具调用和最终回答协议。"""
 
 import json
 import re
 
 
 class ResponseParser:
-    """Parse JSON/XML tool calls and final answers from model output."""
+    """从模型输出中解析 JSON/XML 工具调用和最终回答。"""
 
     @staticmethod
     def parse(raw):

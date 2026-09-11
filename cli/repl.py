@@ -1,4 +1,4 @@
-"""Interactive and one-shot command execution."""
+"""交互式和一次性命令执行。"""
 
 import sys
 
@@ -6,7 +6,7 @@ from .banner import HELP_DETAILS, build_welcome
 
 
 def run(agent, args):
-    """Run one prompt or the interactive REPL."""
+    """运行一次性提示词或交互式 REPL。"""
     print(
         build_welcome(
             agent,

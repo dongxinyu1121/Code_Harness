@@ -4,16 +4,15 @@ from pathlib import Path
 import pytest
 from unittest.mock import patch
 
-from mini_coding_agent import (
-    FakeModelClient,
-    MiniAgent,
-    SessionStore,
-    WorkspaceContext,
-    build_welcome,
-)
+from agent.runtime import MiniAgent
+from cli.banner import build_welcome
+from memory.session_store import SessionStore
+from providers.fake import FakeModelClient
 from providers.openai_compatible import OpenAICompatibleProvider
 from providers.anthropic_compatible import AnthropicCompatibleProvider
+from workspace.snapshot import WorkspaceContext
 import cli.factory as cli_factory
+from cli.config import build_arg_parser
 
 
 def build_workspace(tmp_path):
@@ -32,6 +31,12 @@ def build_agent(tmp_path, outputs, **kwargs):
         approval_policy=approval_policy,
         **kwargs,
     )
+
+
+def test_cli_defaults_to_auto_approval():
+    args = build_arg_parser().parse_args([])
+
+    assert args.approval == "auto"
 
 
 def test_agent_runs_tool_then_final(tmp_path):
@@ -399,7 +404,7 @@ def test_prompt_top_level_sections_stay_flush_left_with_multiline_content(tmp_pa
         repo_root=str(tmp_path),
         branch="fix/prompt-indentation",
         default_branch="main",
-        status=" M mini_coding_agent.py\n?? tests/test_prompt.py",
+        status=" M cli/app.py\n?? tests/test_prompt.py",
         recent_commits=["abc123 first commit", "def456 second commit"],
         project_docs={"README.md": "line1\nline2"},
     )
@@ -412,7 +417,7 @@ def test_prompt_top_level_sections_stay_flush_left_with_multiline_content(tmp_pa
     )
     agent.session["memory"] = {
         "task": "verify prompt formatting",
-        "files": ["mini_coding_agent.py"],
+        "files": ["cli/app.py"],
         "notes": ["saw inconsistent indentation", "need regression coverage"],
     }
     agent.record({"role": "user", "content": "inspect prompt()", "created_at": "1"})
@@ -420,8 +425,8 @@ def test_prompt_top_level_sections_stay_flush_left_with_multiline_content(tmp_pa
         {
             "role": "tool",
             "name": "read_file",
-            "args": {"path": "mini_coding_agent.py"},
-            "content": "    def prompt(self, user_message):\n        ...",
+            "args": {"path": "cli/app.py"},
+            "content": "    def main(argv=None):\n        ...",
             "created_at": "2",
         }
     )
@@ -439,61 +444,61 @@ def _make_filler(i):
 
 
 def test_history_text_deduplicates_reads_but_not_after_write(tmp_path):
-    """read_file deduplication must not skip a read that follows a write.
+    """read_file 去重不能跳过写入之后的读取。
 
-    Realistic prior-turn history (non-recent window):
+    模拟之前轮次的历史记录（非最近窗口）：
         user: "update config"
         assistant: <tool>read_file config</tool>
         tool:   config v1 (content: setting=true)
         assistant: <tool>write_file config</tool>
         tool:   wrote
         assistant: <tool>read_file config</tool>
-        tool:   config v2 (content: setting=false)   <- MUST NOT be skipped
+        tool:   config v2 (content: setting=false)   <- 不能跳过
 
-    Without fix: seen_reads={"config"} after first read; write does NOT clear it;
-                 second read is wrongly skipped (LLM sees stale content).
-    With fix: write clears seen_reads, second read is correctly shown.
+    修复前：第一次读取后 seen_reads={"config"}；写入没有清理它；
+            第二次读取会被错误跳过（LLM 看到旧内容）。
+    修复后：写入会清理 seen_reads，第二次读取会正确显示。
     """
     agent = build_agent(tmp_path, [])
 
-    # Simulate a prior turn with read->write->read on the same file
-    # history_length=13, recent_start=7 (indices 0-6 non-recent, 7-12 recent)
-    agent.record({"role": "user", "content": "update config", "created_at": "0"})        # index 0
+    # 模拟同一个文件在之前轮次中经历 read->write->read。
+    # history_length=13，recent_start=7（索引 0-6 为非最近记录，7-12 为最近记录）。
+    agent.record({"role": "user", "content": "update config", "created_at": "0"})        # 索引 0
     agent.record({"role": "assistant", "content": '<tool>{"name":"read_file","args":{"path":"config.txt"}}</tool>', "created_at": "1"})
-    agent.record({"role": "tool", "name": "read_file", "args": {"path": "config.txt"}, "content": "# config.txt\n   1: setting=true\n", "created_at": "2"})  # index 2, non-recent, ADDED
+    agent.record({"role": "tool", "name": "read_file", "args": {"path": "config.txt"}, "content": "# config.txt\n   1: setting=true\n", "created_at": "2"})  # 索引 2，非最近记录，已加入
     agent.record({"role": "assistant", "content": '<tool>{"name":"write_file","args":{"path":"config.txt","content":"setting=false\n"}}</tool>', "created_at": "3"})
-    agent.record({"role": "tool", "name": "write_file", "args": {"path": "config.txt", "content": "setting=false\n"}, "content": "wrote config.txt", "created_at": "4"})  # index 4, non-recent
+    agent.record({"role": "tool", "name": "write_file", "args": {"path": "config.txt", "content": "setting=false\n"}, "content": "wrote config.txt", "created_at": "4"})  # 索引 4，非最近记录
     agent.record({"role": "assistant", "content": '<tool>{"name":"read_file","args":{"path":"config.txt"}}</tool>', "created_at": "5"})
-    agent.record({"role": "tool", "name": "read_file", "args": {"path": "config.txt"}, "content": "# config.txt\n   1: setting=false\n", "created_at": "6"})  # index 6, non-recent, ADDED (write cleared dedup)
-    # recent entries
+    agent.record({"role": "tool", "name": "read_file", "args": {"path": "config.txt"}, "content": "# config.txt\n   1: setting=false\n", "created_at": "6"})  # 索引 6，非最近记录，已加入（写入清理了去重状态）
+    # 最近记录。
     for i in range(7, 13):
         agent.record(_make_filler(i))
 
     history = agent.history_text()
 
-    # Both read contents appear exactly once (check full line to avoid JSON false positives)
+    # 两次读取内容都只出现一次（检查整行以避免 JSON 造成误判）。
     assert "# config.txt\n   1: setting=true\n" in history
     assert "# config.txt\n   1: setting=false\n" in history
-    # Also verify duplicate read (setting=true, same path) does NOT appear twice
+    # 同时确认重复读取（setting=true，同一路径）不会出现两次。
     assert history.count("setting=true") == 1
 
 
 def test_history_text_deduplicates_unchanged_repeated_reads(tmp_path):
-    """read_file deduplication should still skip repeated reads with no write in between."""
+    """read_file 去重仍应跳过中间没有写入的重复读取。"""
     agent = build_agent(tmp_path, [])
 
-    # Realistic: two identical reads with no write between them
-    # history_length=10, recent_start=4 (indices 0-3 non-recent, 4-9 recent)
-    agent.record({"role": "user", "content": "check logs", "created_at": "0"})  # index 0
+    # 更真实的场景：两次完全相同的读取之间没有写入。
+    # history_length=10，recent_start=4（索引 0-3 为非最近记录，4-9 为最近记录）。
+    agent.record({"role": "user", "content": "check logs", "created_at": "0"})  # 索引 0
     agent.record({"role": "assistant", "content": '<tool>{"name":"read_file","args":{"path":"log.txt"}}</tool>', "created_at": "1"})
-    agent.record({"role": "tool", "name": "read_file", "args": {"path": "log.txt"}, "content": "# log.txt\n   1: stable\n", "created_at": "2"})  # index 2, non-recent, ADDED
-    agent.record({"role": "assistant", "content": '<tool>{"name":"read_file","args":{"path":"log.txt"}}</tool>', "created_at": "3"})  # index 3, non-recent, SKIPPED (dup)
+    agent.record({"role": "tool", "name": "read_file", "args": {"path": "log.txt"}, "content": "# log.txt\n   1: stable\n", "created_at": "2"})  # 索引 2，非最近记录，已加入
+    agent.record({"role": "assistant", "content": '<tool>{"name":"read_file","args":{"path":"log.txt"}}</tool>', "created_at": "3"})  # 索引 3，非最近记录，跳过（重复）
     for i in range(4, 10):
-        agent.record(_make_filler(i))  # indices 4-9, recent
+        agent.record(_make_filler(i))  # 索引 4-9，最近记录。
 
     history = agent.history_text()
 
-    # Only first read should appear; duplicates must be skipped
+    # 只应出现第一次读取，重复内容必须跳过。
     assert history.count("stable") == 1
 
 

@@ -1,8 +1,8 @@
-"""Deterministic provider used by tests."""
+"""测试使用的确定性模型提供方。"""
 
 
 class FakeModelClient:
-    """Return preconfigured responses without making network calls."""
+    """不发起网络调用，直接返回预配置响应。"""
 
     def __init__(self, outputs):
         self.outputs = list(outputs)

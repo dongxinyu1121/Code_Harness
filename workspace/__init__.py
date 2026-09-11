@@ -1,4 +1,4 @@
-"""Workspace inspection modules."""
+"""工作区检查模块。"""
 
 from .snapshot import WorkspaceContext
 

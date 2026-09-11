@@ -1,8 +1,8 @@
-"""Termination checks for the current agent loop."""
+"""当前 Agent 循环的终止条件检查。"""
 
 
 def repeated_tool_call(history, name, args):
-    """Return whether the two most recent tool events are identical."""
+    """判断最近两次工具事件是否完全相同。"""
     tool_events = [item for item in history if item["role"] == "tool"]
     if len(tool_events) < 2:
         return False
@@ -11,7 +11,7 @@ def repeated_tool_call(history, name, args):
 
 
 def repeated_file_read(history, path):
-    """Return whether a file was read after its most recent write."""
+    """判断文件最近一次写入后是否已经被读取过。"""
     requested = str(path or "").replace("\\", "/").lower()
     if not requested:
         return False
@@ -27,7 +27,7 @@ def repeated_file_read(history, path):
 
 
 def repeated_observation(history, name, result):
-    """Return whether an inspection tool produced the same result before."""
+    """判断检查类工具之前是否产生过相同结果。"""
     if name not in {"list_files", "read_file", "search"}:
         return False
     if not result or str(result).startswith("error:"):
@@ -41,7 +41,7 @@ def repeated_observation(history, name, result):
 
 
 def step_limit_result(attempts, tool_steps, max_steps, max_attempts):
-    """Return the final message when the loop reaches a safety limit."""
+    """在循环触发安全限制时返回最终消息。"""
     if attempts >= max_attempts and tool_steps < max_steps:
         return "Stopped after too many malformed model responses without a valid tool call or final answer."
     return "Stopped after reaching the step limit without a final answer."

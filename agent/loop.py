@@ -1,4 +1,4 @@
-"""The model, tool, observation, and final-answer loop."""
+"""模型、工具、观察结果和最终回答的循环。"""
 
 from .termination import step_limit_result
 
@@ -19,7 +19,7 @@ def run(
     clip,
     now,
 ):
-    """Run one agent request until final output or a safety limit."""
+    """运行一次 Agent 请求，直到得到最终输出或触发安全限制。"""
     if not memory["task"]:
         memory["task"] = clip(user_message.strip(), 300)
     record({"role": "user", "content": user_message, "created_at": now()})

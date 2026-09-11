@@ -1,8 +1,8 @@
-"""Tool definitions exposed to model adapters."""
+"""暴露给模型适配器的工具定义。"""
 
 
 def response_tool_definitions():
-    """Return the Agent tools in the Responses API function-tool format."""
+    """以 Responses API 函数工具格式返回 Agent 工具。"""
     fields = {
         "list_files": (
             "List files in the workspace.",

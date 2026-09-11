@@ -1,2 +1,1 @@
-"""Command-line application modules."""
-
+"""命令行应用模块。"""

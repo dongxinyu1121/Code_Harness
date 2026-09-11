@@ -1,4 +1,4 @@
-"""Provider adapter for Anthropic Messages-compatible endpoints."""
+"""Anthropic Messages 兼容端点的模型提供方适配器。"""
 
 import http.client
 import json
@@ -11,7 +11,7 @@ from .base import BaseLLMProvider
 
 
 class AnthropicCompatibleProvider(BaseLLMProvider):
-    """Call an Anthropic-compatible ``/v1/messages`` endpoint."""
+    """调用 Anthropic 兼容的 ``/v1/messages`` 端点。"""
 
     def __init__(
         self,
@@ -41,7 +41,7 @@ class AnthropicCompatibleProvider(BaseLLMProvider):
 
     @staticmethod
     def _convert_tools(tools):
-        """Translate OpenAI function definitions to Anthropic tool schemas."""
+        """将 OpenAI 函数定义转换为 Anthropic 工具结构。"""
         converted = []
         for tool in tools:
             if tool.get("type") != "function":
@@ -100,7 +100,7 @@ class AnthropicCompatibleProvider(BaseLLMProvider):
         )
 
     def submit_tool_result(self, result):
-        """Queue the result as the user ``tool_result`` content block."""
+        """将结果排队为用户侧的 ``tool_result`` 内容块。"""
         if not self.pending_tool_use_id:
             return
         self.pending_tool_result = str(result)
@@ -151,4 +151,3 @@ class AnthropicCompatibleProvider(BaseLLMProvider):
                         f"Model: {self.model}"
                     ) from exc
                 time.sleep(min(2**attempt, 8))
-

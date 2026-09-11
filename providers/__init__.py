@@ -1,4 +1,4 @@
-"""Model provider adapters."""
+"""模型提供方适配器。"""
 
 from .base import BaseLLMProvider
 from .anthropic_compatible import AnthropicCompatibleProvider

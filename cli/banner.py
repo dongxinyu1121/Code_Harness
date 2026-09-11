@@ -1,4 +1,4 @@
-"""Terminal welcome screen rendering."""
+"""终端欢迎界面渲染。"""
 
 import shutil
 
@@ -34,7 +34,7 @@ def middle(text, limit):
 
 
 def build_welcome(agent, model, host):
-    """Render the terminal banner without coupling it to the runtime."""
+    """渲染终端横幅，并避免与运行时强耦合。"""
     width = max(68, min(shutil.get_terminal_size((80, 20)).columns, 84))
     inner = width - 4
     gap = 3

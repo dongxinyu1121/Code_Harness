@@ -1,4 +1,4 @@
-"""Bounded shell command tool."""
+"""带边界限制的 Shell 命令工具。"""
 
 import subprocess
 

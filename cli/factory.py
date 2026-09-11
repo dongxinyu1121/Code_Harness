@@ -1,4 +1,4 @@
-"""Application dependency composition."""
+"""应用依赖组装。"""
 
 import os
 from pathlib import Path
@@ -12,7 +12,7 @@ from workspace.snapshot import WorkspaceContext
 
 
 def build_agent(args):
-    """Compose workspace, provider, session, and agent runtime."""
+    """组装工作区、模型提供方、会话和 Agent 运行时。"""
     workspace = WorkspaceContext.build(args.cwd)
     store = SessionStore(Path(workspace.cwd) / ".mini-coding-agent" / "sessions")
     provider = (args.provider or os.getenv("LLM_PROVIDER", "openai")).lower()

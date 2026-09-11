@@ -1,4 +1,4 @@
-"""Send one minimal request using the OpenAI-compatible settings in .env."""
+"""使用 .env 中的 OpenAI 兼容配置发送一次最小请求。"""
 
 import argparse
 import json

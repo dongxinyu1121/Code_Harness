@@ -1,4 +1,4 @@
-"""Filesystem tools operating inside a workspace."""
+"""在工作区内部运行的文件系统工具。"""
 
 from pathlib import Path
 
@@ -31,7 +31,7 @@ def list_files(root, path_policy, args):
 
 
 def list_directory_tree(root, path_policy, args):
-    """List a bounded directory tree without exposing internal agent state."""
+    """列出受限目录树，同时隐藏 Agent 内部状态。"""
     path = path_policy.resolve(args.get("path", "."))
     if not path.is_dir():
         raise ValueError("path is not a directory")
@@ -73,7 +73,7 @@ def list_directory_tree(root, path_policy, args):
 
 
 def rename_file(root, path_policy, args):
-    """Rename one file while keeping source and destination in the workspace."""
+    """重命名单个文件，并确保源路径和目标路径都在工作区内。"""
     source = path_policy.resolve(args["path"])
     destination = path_policy.resolve(args["new_path"])
     if not source.is_file():
@@ -86,7 +86,7 @@ def rename_file(root, path_policy, args):
 
 
 def delete_file(root, path_policy, args):
-    """Delete one file after the caller has passed the approval gate."""
+    """在调用方通过审批后删除单个文件。"""
     path = path_policy.resolve(args["path"])
     if not path.is_file():
         raise ValueError("path is not a file")

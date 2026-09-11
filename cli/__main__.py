@@ -1,4 +1,4 @@
-"""Allow the modular CLI to run with ``python -m cli``."""
+"""允许模块化 CLI 通过 ``python -m cli`` 运行。"""
 
 from .app import main
 

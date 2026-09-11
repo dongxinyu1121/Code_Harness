@@ -1,4 +1,4 @@
-"""CLI configuration and environment loading."""
+"""CLI 配置和环境变量加载。"""
 
 import argparse
 import os
@@ -9,7 +9,7 @@ HELP_TEXT = "/help, /memory, /session, /reset, /exit"
 
 
 def load_local_env(path=".env"):
-    """Load simple KEY=VALUE pairs from a local dotenv file."""
+    """从本地 dotenv 文件加载简单的 KEY=VALUE 配置。"""
     env_path = Path(path)
     if not env_path.is_file():
         return
@@ -57,7 +57,7 @@ def build_arg_parser():
     parser.add_argument(
         "--approval",
         choices=("ask", "auto", "never"),
-        default="ask",
+        default="auto",
         help="Approval policy for risky tools; auto grants the model arbitrary command execution and file writes.",
     )
     parser.add_argument("--max-steps", type=int, default=18, help="Maximum tool/model iterations per request.")

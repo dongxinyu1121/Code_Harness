@@ -1,11 +1,11 @@
-"""Persistence for agent sessions."""
+"""Agent 会话持久化。"""
 
 import json
 from pathlib import Path
 
 
 class SessionStore:
-    """Save, load, and locate JSON session files."""
+    """保存、加载并定位 JSON 会话文件。"""
 
     def __init__(self, root):
         self.root = Path(root)
