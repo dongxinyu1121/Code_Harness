@@ -59,6 +59,14 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         self.pending_tool_call_id = None
         self.pending_tool_result = None
 
+    def _endpoint_url(self, path):
+        """Build an API endpoint URL whether base_url is root or already /v1."""
+        base = self.base_url
+        path = "/" + path.lstrip("/")
+        if base.endswith("/v1") and path.startswith("/v1/"):
+            return base + path[3:]
+        return base + path
+
     @staticmethod
     def _to_chat_tools(tools):
         """Convert Responses API flat tool format to Chat Completions nested format."""
@@ -112,7 +120,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
         if self.tools:
             payload["tools"] = self.tools
 
-        data = self._send(self.base_url + endpoint, payload)
+        data = self._send(self._endpoint_url(endpoint), payload)
 
         if data.get("error"):
             error = data["error"]
@@ -173,7 +181,7 @@ class OpenAICompatibleProvider(BaseLLMProvider):
             payload["tools"] = self.tools
             payload["tool_choice"] = "auto"
 
-        data = self._send(self.base_url + "/v1/chat/completions", payload)
+        data = self._send(self._endpoint_url("/v1/chat/completions"), payload)
 
         if data.get("error"):
             error = data["error"]

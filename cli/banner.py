@@ -4,7 +4,7 @@ import shutil
 
 
 WELCOME_ART = (
-    " ____   __  ____",
+    "____    __  __ __    __",
     "|  _ \\  \\ \\/ / \\ \\  / /",
     "| | | |  \\  /   \\ \\/ /",
     "| |_| |  /  \\    \\  /",
@@ -62,7 +62,8 @@ def build_welcome(agent, model, host):
         return f"| {left}{' ' * gap}{right} |"
 
     line = divider("=")
-    rows = [center(text) for text in WELCOME_ART]
+    art_width = max(map(len, WELCOME_ART))
+    rows = [center(text.ljust(art_width)) for text in WELCOME_ART]
     rows.extend(
         [
             center("DXY CODING AGENT"),
@@ -75,4 +76,3 @@ def build_welcome(agent, model, host):
         ]
     )
     return "\n".join([line, *rows, line])
-

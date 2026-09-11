@@ -244,6 +244,11 @@ def test_welcome_logo_uses_fixed_width_lines(tmp_path):
     logo_lines = welcome.splitlines()[1:6]
 
     assert len({len(line) for line in logo_lines}) == 1
+    art_positions = [
+        next(index for index, char in enumerate(line[2:-2]) if char != " ")
+        for line in logo_lines
+    ]
+    assert len(set(art_positions)) == 1
 
 
 def test_path_rejects_parent_escape(tmp_path):
@@ -573,6 +578,36 @@ def test_openai_compatible_provider_posts_responses_payload():
     assert captured["body"]["max_output_tokens"] == 42
     assert "temperature" not in captured["body"]
     assert "top_p" not in captured["body"]
+
+
+def test_openai_compatible_provider_uses_single_v1_prefix_for_responses():
+    captured = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({"output_text": "ok"}).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        captured["url"] = request.full_url
+        return FakeResponse()
+
+    client = OpenAICompatibleProvider(
+        model="gpt-5.5",
+        base_url="https://api.chiyi.cc/v1",
+        api_key="test-key",
+        wire_api="responses",
+    )
+
+    with patch("urllib.request.urlopen", fake_urlopen):
+        assert client.complete("hello", 42) == "ok"
+
+    assert captured["url"] == "https://api.chiyi.cc/v1/responses"
 
 
 def test_openai_compatible_provider_translates_responses_function_call():
