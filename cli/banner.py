@@ -4,7 +4,7 @@ import shutil
 
 
 WELCOME_ART = (
-    "____    __  __ __    __",
+    " ____   __  __ __    __",
     "|  _ \\  \\ \\/ / \\ \\  / /",
     "| | | |  \\  /   \\ \\/ /",
     "| |_| |  /  \\    \\  /",
@@ -66,7 +66,7 @@ def build_welcome(agent, model, host):
     rows = [center(text.ljust(art_width)) for text in WELCOME_ART]
     rows.extend(
         [
-            center("DXY CODING AGENT"),
+            center("WELCOME TO CODE_HARNESS"),
             divider("-"),
             row(""),
             row("WORKSPACE  " + middle(agent.workspace.cwd, inner - 11)),

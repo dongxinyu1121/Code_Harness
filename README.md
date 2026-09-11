@@ -1,58 +1,40 @@
-# Mini Coding Agent
+# Code_Harness
 
-Mini Coding Agent is a small, structured coding agent for working with a
-local repository through an OpenAI-compatible or Anthropic-compatible model
-provider.
+![Code_Harness](images/image.png)
 
-The project is organized by responsibility:
+Code_Harness 是一个轻量级命令行编码 Agent。它可以读取本地项目结构、搜索代码、读写文件、执行受限 Shell 命令，并通过 OpenAI 兼容或 Anthropic 兼容的模型接口完成代码修改任务。
 
-```text
-cli/         command-line entrypoint and interactive session
-agent/       agent runtime, loop, parsing, and termination
-providers/   model provider adapters
-tools/       filesystem, search, shell, and delegation tools
-workspace/   repository and workspace inspection
-memory/      session persistence
-tests/       automated tests
+## 环境配置
+
+先在项目根目录创建 `.env` 文件。可以参考 `.env.example`，最少需要配置：
+
+```env
+LLM_PROVIDER=openai
+OPENAI_BASE_URL=https://your-api-base-url
+OPENAI_API_KEY=your-api-key
+LLM_MODEL=your-model
+LLM_WIRE_API=responses
+LLM_TOOL_MODE=prompt
 ```
 
-## Run
+## 运行方式
 
-Run directly from the source tree:
+在项目根目录运行：
 
 ```powershell
 python -m cli
 ```
 
-After installing the project:
+## 常用参数
+
+指定要操作的项目目录：
 
 ```powershell
-mini-coding-agent
+python -m cli --cwd E:\Some\OtherProject
 ```
 
-Show command-line options:
+查看完整命令行参数：
 
 ```powershell
 python -m cli --help
 ```
-
-By default, the agent runs with `--approval auto`, so file writes, patches,
-renames, deletes, and shell commands are allowed without an extra prompt. Use
-`--approval ask` when you want to confirm risky tool calls one by one.
-
-## Configuration
-
-Copy `.env.example` to `.env` and configure the model provider. The local
-`.env` file is ignored by Git.
-
-For an OpenAI-compatible provider, the main settings are:
-
-```text
-LLM_BASE_URL=https://example.com/v1
-LLM_API_KEY=your-api-key
-LLM_MODEL=your-model
-LLM_WIRE_API=chat_completions
-```
-
-The agent supports workspace inspection, file operations, bounded shell
-commands, session persistence, approval policies, and bounded delegation.
