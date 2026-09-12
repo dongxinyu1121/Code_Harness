@@ -38,25 +38,3 @@ python -m cli --cwd E:\Some\OtherProject
 ```powershell
 python -m cli --help
 ```
-
-## Skill 功能
-
-项目会自动读取 `skills/*/SKILL.md`。当用户请求和某个 Skill 高度匹配时，Agent 会自动加载它；如果匹配不明确，就不加载，也不会打断用户。
-
-查看可用 Skill：
-
-```text
-/skills
-```
-
-手动指定 Skill：
-
-```text
-/skill ask-matt
-```
-
-清除手动指定的 Skill：
-
-```text
-/skill none
-```
